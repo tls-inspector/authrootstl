@@ -16,6 +16,29 @@ import (
 //go:embed ca.crt
 var caCert []byte
 
+func (d signedData) Verify() error {
+	var val asn1.RawValue
+	if _, err := asn1.Unmarshal(d.CertBytes.Raw, &val); err != nil {
+		return err
+	}
+
+	certificates, err := x509.ParseCertificates(val.Bytes)
+	if err != nil {
+		return err
+	}
+
+	var compound asn1.RawValue
+	asn1.Unmarshal(d.ContentInfo.Content.Bytes, &compound)
+	for _, signer := range d.SignerInfos {
+		if err := verifySignature(compound.Bytes, certificates, signer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// src:https://github.com/mozilla-services/pkcs7/blob/master/verify.go
+
 func verifySignature(signedData []byte, certificates []*x509.Certificate, signer signerInfo) (err error) {
 	ee := getCertFromCertsByIssuerAndSerial(certificates, signer.IssuerAndSerialNumber)
 	if ee == nil {
