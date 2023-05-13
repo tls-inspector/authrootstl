@@ -23,7 +23,7 @@ type Subject struct {
 	KeyID string
 	// A bitmask of key usage scenarios accepted for this subject. These typically aren't present on the certificate themselves.
 	MicrosoftExtendedKeyUsage uint16
-	// If this subject has been distrusted by Microsoft then this field will contain the date of when that occured.
+	// If this subject has been distrusted by Microsoft then this field will contain the date of when that occurred.
 	DisabledDate *time.Time
 	// An optional date used to restrict certificates under this subject after the given date.
 	NotBefore *time.Time

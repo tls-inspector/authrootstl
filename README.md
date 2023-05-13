@@ -1,4 +1,4 @@
-# DS
+# Go Authroot.stl
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/tls-inspector/authrootstl?style=flat-square)](https://goreportcard.com/report/github.com/tls-inspector/authrootstl)
 [![Godoc](https://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/github.com/tls-inspector/authrootstl)

@@ -1,6 +1,7 @@
 package authrootstl_test
 
 import (
+	"crypto/rand"
 	"os"
 	"path"
 	"testing"
@@ -67,4 +68,19 @@ func TestParseUnsigned(t *testing.T) {
 	if len(subjects) > 0 {
 		t.Fatalf("Subjects returned from unsigned file")
 	}
+}
+
+func FuzzParse(f *testing.F) {
+	var entropy = make([]byte, 256)
+	rand.Read(entropy)
+	f.Add(entropy)
+	f.Fuzz(func(t *testing.T, a []byte) {
+		subjects, err := authrootstl.Parse(a)
+		if err == nil {
+			t.Fatalf("No error detected when one expected for fuzzed data")
+		}
+		if subjects != nil {
+			t.Fatalf("Subjects returned for fuzzed data")
+		}
+	})
 }

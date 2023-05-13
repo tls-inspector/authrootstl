@@ -9,6 +9,18 @@ import (
 	"unicode/utf16"
 )
 
+// ctl object ids
+const (
+	ctlOidFriendlyName      = "1.3.6.1.4.1.311.10.11.11"
+	ctlOidKeyId             = "1.3.6.1.4.1.311.10.11.20"
+	ctlOidSubjectNameMD5    = "1.3.6.1.4.1.311.10.11.29"
+	ctlOidSHA256Fingerprint = "1.3.6.1.4.1.311.10.11.98"
+	ctlOidEKU               = "1.3.6.1.4.1.311.10.11.9"
+	ctlOidNotBeforeEKU      = "1.3.6.1.4.1.311.10.11.127"
+	ctlOidDisabledDate      = "1.3.6.1.4.1.311.10.11.104"
+	ctlOidNotBeforeDate     = "1.3.6.1.4.1.311.10.11.126"
+)
+
 func (subject trustedSubjectType) Subject() (*Subject, error) {
 	result := Subject{
 		SHA1Fingerprint: fmt.Sprintf("%X", subject.SubjectIdentifier),
@@ -36,15 +48,15 @@ func (subject trustedSubjectType) Subject() (*Subject, error) {
 func processAttribute(attribute attributeType, subject *Subject) error {
 	attrOid := attribute.Identifier.String()
 	switch attrOid {
-	case "1.3.6.1.4.1.311.10.11.11":
+	case ctlOidFriendlyName:
 		subject.FriendlyName = decodeUTF16Bytes(attribute.Values[0])
-	case "1.3.6.1.4.1.311.10.11.20":
+	case ctlOidKeyId:
 		subject.KeyID = fmt.Sprintf("%0X", attribute.Values[0])
-	case "1.3.6.1.4.1.311.10.11.29":
+	case ctlOidSubjectNameMD5:
 		subject.SubjectNameMD5 = fmt.Sprintf("%X", attribute.Values[0])
-	case "1.3.6.1.4.1.311.10.11.98":
+	case ctlOidSHA256Fingerprint:
 		subject.SHA256Fingerprint = fmt.Sprintf("%X", attribute.Values[0])
-	case "1.3.6.1.4.1.311.10.11.9", "1.3.6.1.4.1.311.10.11.127":
+	case ctlOidEKU, ctlOidNotBeforeEKU:
 		var v []asn1.ObjectIdentifier
 		if _, err := asn1.Unmarshal(attribute.Values[0], &v); err != nil {
 			return fmt.Errorf("stl: invalid attribute value for key usage attribute: %s", err.Error())
@@ -58,18 +70,18 @@ func processAttribute(attribute attributeType, subject *Subject) error {
 			}
 			eku |= ku
 		}
-		if attrOid == "1.3.6.1.4.1.311.10.11.9" {
+		if attrOid == ctlOidEKU {
 			subject.MicrosoftExtendedKeyUsage |= eku
 		} else {
 			subject.NotBeforeEKU |= eku
 		}
-	case "1.3.6.1.4.1.311.10.11.104":
+	case ctlOidDisabledDate:
 		if len(attribute.Values[0]) != 8 {
 			return nil
 		}
 		t := filetimeBytesToTime(attribute.Values[0])
 		subject.DisabledDate = &t
-	case "1.3.6.1.4.1.311.10.11.126":
+	case ctlOidNotBeforeDate:
 		if len(attribute.Values[0]) != 8 {
 			return nil
 		}
