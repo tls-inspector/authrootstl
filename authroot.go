@@ -37,7 +37,8 @@ func Parse(data []byte) ([]Subject, error) {
 		return nil, fmt.Errorf("pkcs7: unexpected content type")
 	}
 
-	if err := sd.Verify(); err != nil {
+	signingChain, err := sd.Verify()
+	if err != nil {
 		return nil, fmt.Errorf("verify: %s", err.Error())
 	}
 
@@ -48,6 +49,13 @@ func Parse(data []byte) ([]Subject, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if ctlInfo.ThisUpdate.Before(signingChain[0].NotBefore) {
+		return nil, fmt.Errorf("verify: not valid signing certificate: not before '%s' is before last update '%s'", signingChain[0].NotBefore.String(), ctlInfo.ThisUpdate.String())
+	}
+	if ctlInfo.ThisUpdate.After(signingChain[0].NotAfter) {
+		return nil, fmt.Errorf("verify: expired signing certificate: not after '%s' is after last update '%s'", signingChain[0].NotAfter.String(), ctlInfo.ThisUpdate.String())
 	}
 
 	subjects := []Subject{}

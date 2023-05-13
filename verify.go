@@ -8,77 +8,65 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"time"
 
 	_ "embed"
 )
 
 //go:embed ca.crt
-var caCert []byte
+var caCertData []byte
 
-func (d signedData) Verify() error {
+// Verify will verify the PKCS#7 signature and return the certificate chain or an error.
+// The leaf (signing) certificate will be index 0.
+func (d signedData) Verify() ([]x509.Certificate, error) {
 	var val asn1.RawValue
 	if _, err := asn1.Unmarshal(d.CertBytes.Raw, &val); err != nil {
-		return err
+		return nil, fmt.Errorf("asn1: %s", err)
 	}
 
 	certificates, err := x509.ParseCertificates(val.Bytes)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("x509: %s", err)
 	}
 
 	var compound asn1.RawValue
 	asn1.Unmarshal(d.ContentInfo.Content.Bytes, &compound)
-	for _, signer := range d.SignerInfos {
-		if err := verifySignature(compound.Bytes, certificates, signer); err != nil {
-			return err
-		}
+	if len(d.SignerInfos) != 1 {
+		return nil, fmt.Errorf("pkcs7: unexpected number of signatures. expected 1 got %d", len(d.SignerInfos))
 	}
-	return nil
+
+	return verifySignature(compound.Bytes, certificates, d.SignerInfos[0])
 }
 
-// src:https://github.com/mozilla-services/pkcs7/blob/master/verify.go
-
-func verifySignature(signedData []byte, certificates []*x509.Certificate, signer signerInfo) (err error) {
+// This is based on https://github.com/mozilla-services/pkcs7/blob/master/verify.go
+func verifySignature(signedData []byte, certificates []*x509.Certificate, signer signerInfo) ([]x509.Certificate, error) {
 	ee := getCertFromCertsByIssuerAndSerial(certificates, signer.IssuerAndSerialNumber)
 	if ee == nil {
-		return errors.New("pkcs7: No certificate for signer")
+		return nil, errors.New("pkcs7: No certificate for signer")
 	}
-	signingTime := time.Now().UTC()
 
 	if len(signer.AuthenticatedAttributes) == 0 {
-		return fmt.Errorf("pkcs7: no authenticated attributed")
+		return nil, fmt.Errorf("pkcs7: no authenticated attributed")
 	}
 
 	var digest []byte
 	if err := unmarshalAttribute(signer.AuthenticatedAttributes, asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}, &digest); err != nil {
-		return err
+		return nil, err
 	}
 	computed := sha256.Sum256(signedData)
 	if subtle.ConstantTimeCompare(digest, computed[:]) != 1 {
-		return fmt.Errorf("pkcs7: signature does not match")
+		return nil, fmt.Errorf("pkcs7: signature does not match")
 	}
-	signedData, err = marshalAttributes(signer.AuthenticatedAttributes)
+	signedData, err := marshalAttributes(signer.AuthenticatedAttributes)
 	if err != nil {
-		return err
-	}
-	err = unmarshalAttribute(signer.AuthenticatedAttributes, asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 5}, &signingTime)
-	if err == nil {
-		// signing time found, performing validity check
-		if signingTime.After(ee.NotAfter) || signingTime.Before(ee.NotBefore) {
-			return fmt.Errorf("pkcs7: signing time %q is outside of certificate validity %q to %q",
-				signingTime.Format(time.RFC3339),
-				ee.NotBefore.Format(time.RFC3339),
-				ee.NotAfter.Format(time.RFC3339))
-		}
+		return nil, fmt.Errorf("asn1: %s", err)
 	}
 
 	truststore := x509.NewCertPool()
-	cert, err := x509.ParseCertificate(caCert)
+	caCert, err := x509.ParseCertificate(caCertData)
 	if err != nil {
 		panic("invalid ca certificate file")
 	}
-	truststore.AddCert(cert)
+	truststore.AddCert(caCert)
 
 	intermediates := x509.NewCertPool()
 	for _, intermediate := range certificates {
@@ -88,13 +76,27 @@ func verifySignature(signedData []byte, certificates []*x509.Certificate, signer
 		Roots:         truststore,
 		Intermediates: intermediates,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-		CurrentTime:   signingTime,
+		// The signing certificate for certificate trust lists does sometime expire before Microsoft will
+		// issue a new list update. However, by observing how Windows' certutil.exe utility behaves with expired
+		// trust lists it appears that it either isn't validating the expiry date, or it's using the last update
+		// attribute within the CTL itself (as opposed to a signingTime attribute). I cannot find this being documented
+		// anywhere online.
+		CurrentTime: ee.NotAfter.AddDate(0, 0, -1),
 	}
 	if _, err := ee.Verify(verifyOptions); err != nil {
-		return fmt.Errorf("pkcs7: failed to verify certificate chain: %v", err)
+		return nil, fmt.Errorf("pkcs7: failed to verify certificate chain: %v", err)
 	}
 
-	return ee.CheckSignature(x509.SHA256WithRSA, signedData, signer.EncryptedDigest)
+	if err := ee.CheckSignature(x509.SHA256WithRSA, signedData, signer.EncryptedDigest); err != nil {
+		return nil, fmt.Errorf("signature: %s", err)
+	}
+
+	chain := []x509.Certificate{*ee}
+	for _, intermediate := range certificates {
+		chain = append(chain, *intermediate)
+	}
+	chain = append(chain, *caCert)
+	return chain, nil
 }
 
 func getCertFromCertsByIssuerAndSerial(certs []*x509.Certificate, ias issuerAndSerial) *x509.Certificate {
