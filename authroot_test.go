@@ -44,7 +44,7 @@ func TestParse(t *testing.T) {
 		if subject.KeyID != "0EAC826040562797E52513FC2AE10A539559E4A4" {
 			t.Errorf("Unexpected KeyID: %v", subject.KeyID)
 		}
-		if subject.MicrosoftExtendedKeyUsage != 0 {
+		if len(subject.MicrosoftExtendedKeyUsage) != 0 {
 			t.Errorf("Unexpected MicrosoftExtendedKeyUsage: %v", subject.MicrosoftExtendedKeyUsage)
 		}
 		if disableDate := subject.DisabledDate.UTC().Format(time.RFC3339); disableDate != "2021-08-01T00:00:00Z" {

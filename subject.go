@@ -4,7 +4,6 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"time"
 	"unicode/utf16"
 )
@@ -61,19 +60,10 @@ func processAttribute(attribute attributeType, subject *Subject) error {
 		if _, err := asn1.Unmarshal(attribute.Values[0], &v); err != nil {
 			return fmt.Errorf("stl: invalid attribute value for key usage attribute: %s", err.Error())
 		}
-		var eku uint16
-		for _, oid := range v {
-			ku, known := kuMap[oid.String()]
-			if !known {
-				fmt.Fprintf(os.Stderr, "Unknown oid %s\n", oid.String())
-				continue
-			}
-			eku |= ku
-		}
 		if attrOid == ctlOidEKU {
-			subject.MicrosoftExtendedKeyUsage |= eku
+			subject.MicrosoftExtendedKeyUsage = v
 		} else {
-			subject.NotBeforeEKU |= eku
+			subject.NotBeforeEKU = v
 		}
 	case ctlOidDisabledDate:
 		if len(attribute.Values[0]) != 8 {
